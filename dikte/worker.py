@@ -121,8 +121,10 @@ class Pipeline(QObject):
                 if wav_path in self._retrying:
                     return False
                 self._retrying.add(wav_path)
-            self._jobs.append((wav_path, duration, list(rms_values), ask, paste,
-                               focus, retry, profile, assist))
+            job = (wav_path, duration, list(rms_values), ask, paste,
+                   focus, retry, profile, assist)
+            progressive = getattr(rms_values, "progressive", None)
+            self._jobs.append(job + (progressive,) if progressive is not None else job)
             if self._draining:
                 return
             self._draining = True
@@ -140,6 +142,8 @@ class Pipeline(QObject):
             try:
                 self._work(*job)
             finally:
+                if len(job) > 9:
+                    job[9].cancel()
                 with self._jobs_lock:
                     self._retrying.discard(job[0])
 
@@ -201,7 +205,7 @@ class Pipeline(QObject):
                 self.stage.emit(stage)
 
     def _work(self, wav_path, duration, rms_values, ask, paste_override=None,
-              focus=None, retry=None, profile=None, assist=None):
+              focus=None, retry=None, profile=None, assist=None, progressive=None):
         conf = self.conf
         if ask:
             profile = None
@@ -256,15 +260,31 @@ class Pipeline(QObject):
                 answered[0] = spare
                 return result
 
-            result = self._transcribe(
-                lambda: ask_model(target, wav_path, language=language,
-                                  prompt=prompt, heard=heard),
-                stage,
-                ask_backup if spare is not None else None,
-                t("Trying {model}…", model=spare.model) if spare is not None else "",
-            )
+            result = None
+            if progressive is not None:
+                try:
+                    if (progressive.target == target and progressive.language == language
+                            and progressive.prompt == prompt):
+                        result = progressive.finish(wav_path, self._stop)
+                        if result is not None and not auto:
+                            result = result[0]
+                except Exception as exc:
+                    print(f"dikte: progressive fallback: {exc}", file=sys.stderr)
+                finally:
+                    progressive.cancel()
+            if progressive is not None and self._stop.is_set():
+                raise assistant.Cancelled
+            if result is None:
+                result = self._transcribe(
+                    lambda: ask_model(target, wav_path, language=language,
+                                      prompt=prompt, heard=heard),
+                    stage,
+                    ask_backup if spare is not None else None,
+                    t("Trying {model}…", model=spare.model) if spare is not None else "",
+                )
             target = answered[0]
             raw, detected = result if auto else (result, "")
+            transcribed_at = time.monotonic()
 
             if conf["filter_hallucinations"] and vad.looks_like_hallucination(raw, duration):
                 message = t("Discarded a stock phrase: “{text}”", text=raw[:60])
@@ -323,6 +343,7 @@ class Pipeline(QObject):
                                     "{error}", error=exc)
                     print(f"dikte: cleanup failed: {exc}", file=sys.stderr)
 
+            cleaned_at = time.monotonic()
             question = ""
             selected = selection.NOTHING
             kind = ""
@@ -381,6 +402,8 @@ class Pipeline(QObject):
                 "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "duration": round(duration, 1),
                 "elapsed": round(time.monotonic() - started, 1),
+                "transcribe_elapsed": round(transcribed_at - started, 3),
+                "cleanup_elapsed": round(cleaned_at - transcribed_at, 3),
                 "model": target.model or target.provider,
                 "cleanup_model": cleanup.model(conf) if cleaned else "",
                 "cleanup_error": warning,

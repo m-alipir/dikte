@@ -55,6 +55,7 @@ _app = QApplication.instance() or QApplication([])
 # window does not touch is left out: the round trip cannot lose what it never
 # reads.
 CHANGED = {
+    "local_progressive": True,
     "ui_language": "tr",
     "language": "tr",
     "auto_paste": False,

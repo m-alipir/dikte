@@ -2295,6 +2295,7 @@ class SettingsWindow(QDialog):
         self.local_device.currentIndexChanged.connect(
             self._processing_device_changed
         )
+        self.local_progressive = QCheckBox(t("Transcribe during pauses (experimental)"))
         self.local_preload = QCheckBox(t("Load the model when Dikte starts"))
         self.local_preload.setToolTip(
             t("A large model takes a second or two to load. Loading it up front "
@@ -2326,6 +2327,7 @@ class SettingsWindow(QDialog):
         stt.subforms.append(options_form)
         options_form.addRow(t("Processing device"), self.local_device)
         options_form.addRow("", self.local_preload)
+        options_form.addRow("", self.local_progressive)
         # The same disclosure as every other Advanced, holding the threads.
         self.local_advanced, _threads_form = self._advanced(
             stt, options_form, (t("CPU threads"), self.local_threads))
@@ -3646,6 +3648,7 @@ class SettingsWindow(QDialog):
         self._processing_device_changed()
         self.local_models_dir.setText(conf["local_models_dir"])
         self.local_preload.setChecked(conf["local_preload"])
+        self.local_progressive.setChecked(conf["local_progressive"])
         saved_threads = cfg._local_thread_count(conf["local_threads"])
         self.local_threads.setValue(min(saved_threads, self.local_threads.maximum()))
         self._local_threads_changed = False
@@ -3829,6 +3832,7 @@ class SettingsWindow(QDialog):
         conf["local_device"] = self.local_device.currentData() or "auto"
         conf["local_gpu"] = conf["local_device"] != "cpu"
         conf["local_preload"] = self.local_preload.isChecked()
+        conf["local_progressive"] = self.local_progressive.isChecked()
         if self._local_threads_changed:
             conf["local_threads"] = self.local_threads.value()
 

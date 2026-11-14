@@ -481,6 +481,7 @@ DEFAULTS = {
     "local_threads": 0,             # 0 -> whisper.cpp picks
     "local_gpu": True,               # retained for older settings files
     "local_device": "auto",          # auto | cpu | stable Vulkan device UUID
+    "local_progressive": False,
     "local_preload": True,          # load the model while Dikte starts, rather
                                     # than on the first dictation
     "local_binary": "",             # empty -> whichever copy ggml.py finds

@@ -904,6 +904,7 @@ TR = {
     "Threads": "İş parçacığı",
     "On this machine": "Bu makinede",
     "Use the graphics card": "Ekran kartını kullan",
+    "Transcribe during pauses (experimental)": "Duraksamalarda transkript et (deneysel)",
     "Load the model when Dikte starts": "Modeli Dikte açılırken yükle",
     "Models on this machine": "Bu makinedeki modeller",
     "Unload a model that is sitting unused": "Kullanılmayan modeli bellekten çıkar",

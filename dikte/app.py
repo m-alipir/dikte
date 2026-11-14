@@ -44,6 +44,7 @@ from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon  # noqa: E402
 from . import api  # noqa: E402
 from . import assistant  # noqa: E402
 from . import audio  # noqa: E402
+from . import progressive  # noqa: E402
 from . import cli  # noqa: E402
 from . import config as cfg  # noqa: E402
 from . import cues  # noqa: E402
@@ -1059,6 +1060,9 @@ class Dikte:
         self._clear_pause()
         self.elapsed.restart()
         self.ticker.start()
+        self.recorder.progressive = (progressive.Session(self.conf)
+            if owner == DICTATION and self.conf["transcribe_provider"] == "local"
+            and self.conf["local_progressive"] else None)
         self.recorder.start(self.conf["mic_target"], self.conf["max_seconds"])
         self._give_the_front_back(self.front_before)
 

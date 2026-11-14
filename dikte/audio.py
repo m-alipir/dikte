@@ -166,11 +166,12 @@ class Recorder(QObject):
         self._thread = threading.Thread(
             target=self._pump, daemon=True,
             args=(self._run, self._proc, self._proc.stdout,
-                  self._buffer, self._rms, self._max_bytes),
+                  self._buffer, self._rms, self._max_bytes,
+                  getattr(self, "progressive", None)),
         )
         self._thread.start()
 
-    def _pump(self, run, proc, stdout, buffer, rms, max_bytes):
+    def _pump(self, run, proc, stdout, buffer, rms, max_bytes, progressive=None):
         try:
             while True:
                 chunk = _read_exact(stdout, CHUNK_BYTES)
@@ -190,6 +191,11 @@ class Recorder(QObject):
                     # This recording was given up on; whatever happens now
                     # belongs to the run that replaced it, not to this one.
                     return
+                if progressive is not None:
+                    try:
+                        progressive.feed(chunk, chunk_rms)
+                    except Exception:
+                        progressive.failed = True
                 self.level.emit(peak)
                 if too_long:
                     self._terminate()
@@ -252,6 +258,8 @@ class Recorder(QObject):
 
     def cancel(self):
         self._cancelled = True
+        if getattr(self, "progressive", None) is not None:
+            self.progressive.cancel()
         self._terminate()
         if self._thread:
             self._thread.join(timeout=2)
@@ -296,6 +304,10 @@ class Recorder(QObject):
             # either way; a message beats a traceback in the journal.
             self.failed.emit(t("Could not write the recording: {error}", error=exc))
             return
+        if getattr(self, "progressive", None) is not None:
+            from .progressive import Levels
+            rms = Levels(rms)
+            rms.progressive = self.progressive
         self.stopped.emit(path, frames / RATE, rms)
 
 
