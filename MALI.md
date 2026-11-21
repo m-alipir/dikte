@@ -21,3 +21,14 @@ Test: `.venv/Scripts/python.exe -m unittest discover`. Ağ ve mikrofon kullanmay
 GPL-3.0 lisansı ve kaynak kod korunmuştur. Bu bir upstream sürümü değildir.
 
 Son parça iki saniyeden kısaysa yalnızca sessiz bir kuyruğu modele vermek yerine son konuşma parçasıyla birlikte tekrar işlenir. Böylece son ses atlanmaz; karşılığında son cümle yeniden hesaplanabilir.
+
+
+## Metni düzenleme ve geçmişten seçim
+
+Son metin alanı düzenlenebilir. Enter seçili kısmı, seçim yoksa tamamını panoya kopyalar; Shift+Enter yeni satır ekler. Taslağı temizle yalnızca ekrandaki çalışma metnini siler, geçmiş kaydını değiştirmez. Düzenlenmiş bir taslak dururken yeni sonuç gelirse metnin üzerine yazılmaz; Son transkripti yükle düğmesiyle yeni kayda geçilir. Taslak düzenlemeleri oturumluk çalışma metnidir, diske veya geçmişe kaydedilmez; uygulama kapatıldığında kaybolur.
+
+Kayıt sırasında Baştan başla, mevcut kaydı iptal edip yeni kayıt açar; vazgeçilen konuşmayı transkript/geçmişe göndermez. Önceden tamamlanmış geçmiş kayıtlarını silmez.
+
+Geçmiş sekmesinde bir kayıt seçildiğinde aşağıdaki salt okunur alanda tamamı görünür. Fareyle istenen bölüm seçilebilir; Ctrl+C veya Metni kopyala seçimi kopyalar. Seçim yoksa düğme metnin tamamını kopyalar. Geçmişte düzenleme yoktur.
+
+Kişisel başlatıcıda otomatik yapıştırma ilk varsayılanı kapalıdır. Kaydı bitirince metin kontrol edilip kopyalanabilir. Daha önce kaydedilmiş ayarlar önceliklidir.

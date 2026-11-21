@@ -767,6 +767,8 @@ class HomeWindow(QWidget):
         self.capture_action.setSizePolicy(policy)
         capture_column.addWidget(self.capture_action)
         capture_column.addWidget(self.capture_header)
+        self.restart_capture = _button(t("Start over"), self._restart_capture)
+        capture_column.addWidget(self.restart_capture, 0, Qt.AlignmentFlag.AlignCenter)
         # The shortcut as keycaps and where its text goes, one line; right
         # after setup the same line carries the invitation instead.
         self.capture_hint = widgets.KeyHint()
@@ -809,7 +811,7 @@ class HomeWindow(QWidget):
         top.addStretch(1)
         self.latest_text = QPlainTextEdit()
         widgets.cap_reading(self.latest_text)
-        self.latest_text.setReadOnly(True)
+        self.latest_text.setReadOnly(False)
         self.latest_text.setAccessibleName(t("Latest text"))
         self.latest_text.setPlaceholderText(t("Your first transcript will appear here."))
         # As tall as its text, up to a cap (_fit_latest): no reserved empty
@@ -822,7 +824,10 @@ class HomeWindow(QWidget):
         actions = QHBoxLayout()
         self.latest_time = _label("", "meta")
         actions.addWidget(self.latest_time, 1)
-        self.copy_button = _button(t("Copy"), lambda: QApplication.clipboard().setText(self.latest_text.toPlainText()))
+        self.copy_button = _button(t("Copy"), self._copy_latest)
+        self.clear_draft = _button(t("Clear draft"), self.latest_text.clear)
+        self.load_latest = _button(t("Load latest transcript"), self._load_latest)
+        self.load_latest.hide()
         self.open_button = _button(t("Open"), lambda: self._open_text(self.latest_text.toPlainText()))
         self.open_button.setToolTip(t("Open text"))
         # Shown only under a translation: the text above is not what was said.
@@ -832,6 +837,8 @@ class HomeWindow(QWidget):
         self.original_button.hide()
         # The order every result card uses: Copy, then the rest.
         actions.addWidget(self.copy_button)
+        top.addWidget(self.clear_draft)
+        top.addWidget(self.load_latest)
         actions.addWidget(self.open_button)
         actions.addWidget(self.original_button)
         # The stretch only counts once the card is taller than its rows: wide,
@@ -840,6 +847,8 @@ class HomeWindow(QWidget):
         self.latest_card = self._card(top, self.latest_text, self.latest_warning, actions)
         self.latest_card.layout().insertStretch(3, 1)
         widgets.roomy(self.copy_button, self.open_button, self.original_button)
+        self.latest_text.textChanged.connect(self._draft_changed)
+        self.latest_text.setToolTip(t("Edit the text. Enter copies; Shift+Enter adds a line. History stays unchanged."))
         actions.setSpacing(widgets.BUTTON_GAP)
         main, layout = self._template(None, self.setup_tile, self.capture_row,
                                       self.capture_hint, self.capture_error, self.latest_card)
@@ -1033,8 +1042,7 @@ class HomeWindow(QWidget):
         return page
 
     def _history_page(self):
-        # No title and no reader: the list is the page, its search over its
-        # whole width, and each row copies itself.
+        # Reuse the settings history list and its selectable text reader.
         history = self.settings.task_pages["history"]
         history.show()
         self.settings.history_action.connect(self._history_action)
@@ -1083,6 +1091,35 @@ class HomeWindow(QWidget):
         else:
             self._capture()
         self.refresh()
+
+    def _copy_latest(self):
+        cursor = self.latest_text.textCursor()
+        if cursor.hasSelection():
+            self.latest_text.copy()
+        else:
+            QApplication.clipboard().setText(self.latest_text.toPlainText())
+
+    def _draft_changed(self):
+        has_text = bool(self.latest_text.toPlainText())
+        self.copy_button.setEnabled(has_text)
+        self.open_button.setEnabled(has_text)
+        self.clear_draft.setEnabled(has_text)
+        QTimer.singleShot(0, self._fit_latest)
+
+    def _load_latest(self):
+        self.latest_text.setPlainText(self._last_result.get("text", ""))
+        self.latest_text.document().setModified(False)
+        self.load_latest.hide()
+        self.latest_time.show()
+        self.original_button.setVisible(bool(self._last_result.get("translate_to")
+                                             and self._last_result.get("raw")))
+        self.latest_warning.setVisible(bool(self.latest_warning.text()))
+
+    def _restart_capture(self):
+        if self.controller.state == "recording":
+            self.controller._cancel()
+            self.latest_text.clear()
+            self._capture()
 
     def _copy_original(self):
         QApplication.clipboard().setText(self._last_result.get("raw", ""))
@@ -1251,6 +1288,12 @@ class HomeWindow(QWidget):
         self._arrange_dictation()
 
     def eventFilter(self, watched, event):
+        if (watched is getattr(self, "latest_text", None)
+                and event.type() == QEvent.Type.KeyPress
+                and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                and event.modifiers() == Qt.KeyboardModifier.NoModifier):
+            self._copy_latest()
+            return True
         if watched is getattr(self, "latest_text", None) and event.type() == QEvent.Type.Resize:
             if event.size().width() != event.oldSize().width():
                 QTimer.singleShot(0, self._fit_latest)
@@ -1261,7 +1304,10 @@ class HomeWindow(QWidget):
     def _set_result(self, result, answer):
         if result != self._last_result:
             self._last_result = dict(result)
-            self.latest_text.setPlainText(result.get("text", ""))
+            if not self.latest_text.document().isModified() or not self.latest_text.toPlainText():
+                self._load_latest()
+            else:
+                self.load_latest.show()
             QTimer.singleShot(0, self._fit_latest)
             # When, in a word, and the marks that change how the text reads:
             # the profile and a translation. The exact time and the program
@@ -1269,12 +1315,12 @@ class HomeWindow(QWidget):
             self.latest_time.setText(widgets.meta_line(
                 relative_time(result["ts"]) if result.get("ts") else "",
                 *history_context(result)))
-            self.original_button.setVisible(bool(result.get("translate_to")
+            self.latest_time.setVisible(self.load_latest.isHidden())
+            self.original_button.setVisible(self.load_latest.isHidden() and bool(result.get("translate_to")
                                                  and result.get("raw")))
             self.latest_warning.setText(result.get("cleanup_error", ""))
-            self.latest_warning.setVisible(bool(self.latest_warning.text()))
-            self.copy_button.setEnabled(bool(result.get("text")))
-            self.open_button.setEnabled(bool(result.get("text")))
+            self.latest_warning.setVisible(self.load_latest.isHidden() and bool(self.latest_warning.text()))
+            self._draft_changed()
         if answer != self._last_answer:
             self._last_answer = dict(answer)
 
@@ -1376,6 +1422,7 @@ class HomeWindow(QWidget):
             t("{shortcut} starts and stops dictation in any program.", shortcut=shortcut))
         self.pause_button.setVisible(recording)
         self.cancel_button.setVisible(recording)
+        self.restart_capture.setVisible(recording)
         self.capture_meter.setVisible(recording)
         # Paused: the meter holds still in the paused colour, as the corner
         # indicator does, rather than looking like a live red capture.

@@ -175,10 +175,8 @@ class Home(HomeFixture):
         self.window.refresh_results()
         self.assertTrue(self.window.original_button.isHidden())
 
-    def test_history_is_one_list_the_width_of_the_page(self):
-        """No reader beside or under the list: the list takes the page, the
-        search runs over its whole width, and nothing is clipped, in English
-        and Turkish at the owner's window size and at a narrow one."""
+    def test_history_list_and_reader_fit_the_page(self):
+        """The list and selectable reader fit narrow English and Turkish windows."""
         from PyQt6.QtWidgets import QPlainTextEdit
         cfg.append_history({"ts": "2026-11-08 10:00:00", "text": "One two three"})
         for language in ("en", "tr"):
@@ -194,13 +192,14 @@ class Home(HomeFixture):
                     window.show_mode("history")
                     QApplication.processEvents()
                     page = window.mode_pages["history"]
-                    self.assertFalse([box for box in page.findChildren(QPlainTextEdit)
-                                      if box.isVisible()])
+                    self.assertIn(settings.history_text, [box for box in page.findChildren(QPlainTextEdit)
+                                                          if box.isVisible()])
                     content = page.widget().width()
                     self.assertGreaterEqual(settings.history.width(), content - 2)
                     self.assertGreaterEqual(settings.history_search.width(),
                                             settings.history.width() - 2)
-                    self.assertGreater(settings.history.height(), 500 if width == 850 else 250)
+                    self.assertGreater(settings.history.height(), 150)
+                    self.assertGreaterEqual(settings.history_text.height(), 120)
                     self.assertFalse(page.horizontalScrollBar().isVisible())
 
     def test_clearing_history_removes_the_latest_preview(self):
@@ -1076,3 +1075,88 @@ class OwnerRound(HomeFixture):
         self.assertEqual(history.currentRow(), 1)
         self.assertEqual([item.text() for item in history.selectedItems()],
                          [history.item(1).text()])
+
+
+class DraftEditing(HomeFixture):
+    def add_transcript(self, text, stamp="2026-11-21 10:00:00"):
+        cfg.append_history({"ts": stamp, "text": text, "raw": text})
+        self.window.refresh_results()
+
+    def test_edit_clear_and_refresh_leave_history_unchanged(self):
+        self.add_transcript("İlk cümle silme")
+        editor = self.window.latest_text
+        self.assertFalse(editor.isReadOnly())
+        editor.selectAll()
+        editor.insertPlainText("Düzeltilmiş cümle")
+        self.window.refresh_results()
+        self.assertEqual(editor.toPlainText(), "Düzeltilmiş cümle")
+        self.window.copy_button.click()
+        self.assertEqual(QApplication.clipboard().text(), "Düzeltilmiş cümle")
+        self.window.clear_draft.click()
+        self.window.refresh_results()
+        self.assertEqual(editor.toPlainText(), "")
+        self.assertFalse(self.window.copy_button.isEnabled())
+        self.assertEqual(cfg.read_history()[0]["text"], "İlk cümle silme")
+
+    def test_enter_copies_only_selected_text_and_shift_enter_adds_line(self):
+        from PyQt6.QtGui import QTextCursor
+        from PyQt6.QtTest import QTest
+        self.add_transcript("bir iki üç")
+        editor = self.window.latest_text
+        cursor = editor.textCursor()
+        cursor.setPosition(4)
+        cursor.setPosition(7, QTextCursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+        QTest.keyClick(editor, Qt.Key.Key_Return)
+        self.assertEqual(QApplication.clipboard().text(), "iki")
+        self.assertEqual(editor.toPlainText(), "bir iki üç")
+        cursor.clearSelection()
+        editor.setTextCursor(cursor)
+        QTest.keyClick(editor, Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier)
+        self.assertIn("\n", editor.toPlainText())
+        self.controller.start.assert_not_called()
+        self.controller.stop.assert_not_called()
+
+    def test_new_transcript_does_not_overwrite_edited_draft(self):
+        self.add_transcript("ilk")
+        self.window.latest_text.selectAll()
+        self.window.latest_text.insertPlainText("düzenlenmiş")
+        self.add_transcript("ikinci", "2026-11-21 10:01:00")
+        self.assertEqual(self.window.latest_text.toPlainText(), "düzenlenmiş")
+        self.assertFalse(self.window.load_latest.isHidden())
+        self.assertTrue(self.window.latest_time.isHidden())
+        self.window.load_latest.click()
+        self.assertEqual(self.window.latest_text.toPlainText(), "ikinci")
+
+    def test_history_reads_each_entry_and_copies_a_substring(self):
+        from PyQt6.QtGui import QTextCursor
+        self.add_transcript("bir iki üç")
+        self.add_transcript("başka kayıt", "2026-11-21 10:01:00")
+        self.settings._load_history()
+        self.settings.history.setCurrentRow(1)
+        editor = self.settings.history_text
+        self.assertTrue(editor.isReadOnly())
+        self.assertEqual(editor.toPlainText(), "bir iki üç")
+        cursor = editor.textCursor()
+        cursor.setPosition(4)
+        cursor.setPosition(7, QTextCursor.MoveMode.KeepAnchor)
+        editor.setTextCursor(cursor)
+        self.settings._sync_history_actions()
+        self.settings.history_text_copy.click()
+        self.assertEqual(QApplication.clipboard().text(), "iki")
+        self.settings.history.setCurrentRow(0)
+        self.assertEqual(editor.toPlainText(), "başka kayıt")
+        self.assertEqual(len(cfg.read_history()), 2)
+
+    def test_restart_discards_before_starting_without_transcribing(self):
+        self.controller.state = "recording"
+        self.controller.recording = True
+        def cancel():
+            self.controller.state = "idle"
+            self.controller.recording = False
+        self.controller._cancel.side_effect = cancel
+        self.window._restart_capture()
+        self.controller._cancel.assert_called_once()
+        self.controller.start.assert_called_once()
+        self.controller.stop.assert_not_called()
+        self.assertEqual(cfg.read_history(), [])

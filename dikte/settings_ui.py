@@ -3214,10 +3214,7 @@ class SettingsWindow(QDialog):
         return self._two_columns([(keys, asking), (meeting_keys, how)])
 
     def _history_tab(self):
-        """The history as one list, the page's whole width and height, with
-        the search over it. Each row is the tool: its copy button, its More
-        menu, Ctrl+C, a double click or Enter. There is no reader: Open puts
-        an entry in a window of its own."""
+        """History entries with a read-only, selectable full-text reader."""
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -3268,6 +3265,15 @@ class SettingsWindow(QDialog):
         # A filled card like every other list, not an outlined frame.
         self.history.setProperty("card", True)
         layout.addWidget(self.history, 1)
+        self.history_text = QPlainTextEdit()
+        self.history_text.setReadOnly(True)
+        self.history_text.setAccessibleName(t("Selected transcript"))
+        self.history_text.setPlaceholderText(t("Select an entry to read and copy any part of its text."))
+        self.history_text.setMinimumHeight(120)
+        layout.addWidget(self.history_text, 1)
+        self.history_text_copy = QPushButton(t("Copy text"))
+        self.history_text_copy.clicked.connect(self._copy_history_text)
+        layout.addWidget(self.history_text_copy, 0, Qt.AlignmentFlag.AlignRight)
 
         # What a row offers beyond copying, in its More menu and in the
         # context menu alike, enabled for what is selected.
@@ -5068,6 +5074,10 @@ class SettingsWindow(QDialog):
 
     def _sync_history_actions(self):
         rows = self._selected_rows()
+        text = "\n\n".join(row.get("text", "") for row in rows if not row.get("failed"))
+        if self.history_text.toPlainText() != text:
+            self.history_text.setPlainText(text)
+        self.history_text_copy.setEnabled(bool(text))
         retryable = bool(self._retryable_selection())
         translated = bool(self._translated_selection())
         # A failure with nothing to retry: the newest selected is one, and no
@@ -5114,6 +5124,12 @@ class SettingsWindow(QDialog):
         """Selected entries, newest first, the order they are listed in."""
         items = sorted(self.history.selectedItems(), key=self.history.row)
         return [item.data(Qt.ItemDataRole.UserRole) for item in items]
+
+    def _copy_history_text(self):
+        if self.history_text.textCursor().hasSelection():
+            self.history_text.copy()
+        else:
+            QGuiApplication.clipboard().setText(self.history_text.toPlainText())
 
     def _copy_history(self):
         rows = [row for row in self._selected_rows() if not row.get("failed")]

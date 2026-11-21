@@ -9,7 +9,7 @@ paths.CONFIG_DIR = paths.DATA_DIR / "mali-settings"
 
 from dikte import config, ggml  # noqa: E402
 
-config.DEFAULTS.update(local_progressive=True, cleanup_enabled=False,
+config.DEFAULTS.update(local_progressive=True, cleanup_enabled=False, auto_paste=False,
                        language="tr", keep_audio=True)
 available = sorted((ggml.MODELS_DIR / "whisper").glob("*large-v3-turbo*.bin"))
 if available:
